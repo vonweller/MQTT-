@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Web客户端</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #4fc3f7;
+            margin-bottom: 20px;
+            font-size: 32px;
+            text-shadow: 0 0 20px rgba(79, 195, 247, 0.5);
+        }
+
+        /* 连接状态栏 */
+        .status-bar {
+            background: rgba(22, 33, 62, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            border: 1px solid rgba(79, 195, 247, 0.2);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #f44336;
+            transition: all 0.3s;
+            box-shadow: 0 0 10px rgba(244, 67, 54, 0.5);
+        }
+
+        .status-dot.connected {
+            background: #4caf50;
+            box-shadow: 0 0 15px rgba(76, 175, 80, 0.8);
+        }
+
+        .status-dot.connecting {
+            background: #ff9800;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.6;
+                transform: scale(1.1);
+            }
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(33, 150, 243, 0.6);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(244, 67, 54, 0.6);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* 主布局 */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* 面板样式 */
+        .panel {
+            background: rgba(22, 33, 62, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid rgba(79, 195, 247, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .panel-title {
+            font-size: 20px;
+            color: #4fc3f7;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid rgba(79, 195, 247, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #aaa;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(79, 195, 247, 0.3);
+            border-radius: 8px;
+            background: rgba(26, 26, 46, 0.8);
+            color: #eee;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #4fc3f7;
+            box-shadow: 0 0 10px rgba(79, 195, 247, 0.3);
+        }
+
+        select.form-control {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%234fc3f7' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 35px;
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        /* 复选框样式 */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #4fc3f7;
+        }
+
+        /* 订阅列表 */
+        .subscription-list {
+            max-height: 200px;
+            overflow-y: auto;
+            background: rgba(26, 26, 46, 0.6);
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid rgba(79, 195, 247, 0.2);
+        }
+
+        .subscription-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            background: rgba(15, 52, 96, 0.6);
+            border-radius: 6px;
+            margin-bottom: 8px;
+            transition: all 0.3s;
+        }
+
+        .subscription-item:hover {
+            background: rgba(15, 52, 96, 0.8);
+            transform: translateX(5px);
+        }
+
+        .subscription-item:last-child {
+            margin-bottom: 0;
+        }
+
+        /* 消息显示区域 */
+        .messages-container {
+            grid-column: 1 / -1;
+            max-height: 450px;
+            overflow-y: auto;
+        }
+
+        .message-item {
+            padding: 16px;
+            background: rgba(26, 26, 46, 0.6);
+            border-radius: 10px;
+            margin-bottom: 12px;
+            border-left: 4px solid #4fc3f7;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .message-topic {
+            font-weight: bold;
+            color: #4fc3f7;
+            font-size: 15px;
+        }
+
+        .message-meta {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .message-payload {
+            background: rgba(15, 52, 96, 0.6);
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            word-break: break-all;
+            white-space: pre-wrap;
+            color: #ddd;
+        }
+
+        .message-qos {
+            display: inline-block;
+            padding: 3px 10px;
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+            font-style: italic;
+        }
+
+        /* 日志区域 */
+        .log-container {
+            grid-column: 1 / -1;
+            max-height: 180px;
+            overflow-y: auto;
+            background: rgba(10, 10, 10, 0.8);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            border: 1px solid rgba(79, 195, 247, 0.2);
+        }
+
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(26, 26, 46, 0.5);
+        }
+
+        .log-time {
+            color: #666;
+        }
+
+        .log-info {
+            color: #4fc3f7;
+        }
+
+        .log-success {
+            color: #4caf50;
+        }
+
+        .log-error {
+            color: #f44336;
+        }
+
+        .log-warning {
+            color: #ff9800;
+        }
+
+        /* 统计信息 */
+        .stats-bar {
+            display: flex;
+            gap: 25px;
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-value {
+            color: #4fc3f7;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        /* 刷新按钮 */
+        .refresh-btn {
+            background: transparent;
+            border: 1px solid #4fc3f7;
+            color: #4fc3f7;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #4fc3f7;
+            color: #1a1a2e;
+        }
+
+        /* 主题下拉框 */
+        .topic-select-row {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .topic-select-row select {
+            flex: 1;
+        }
+
+        .topic-select-row button {
+            white-space: nowrap;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🔌 MQTT Web客户端</h1>
+
+        <!-- 连接状态栏 -->
+        <div class="status-bar">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">未连接</span>
+            </div>
+            <div class="stats-bar">
+                <div class="stat-item">
+                    消息接收: <span class="stat-value" id="recvCount">0</span>
+                </div>
+                <div class="stat-item">
+                    消息发送: <span class="stat-value" id="sentCount">0</span>
+                </div>
+                <div class="stat-item">
+                    订阅主题: <span class="stat-value" id="subCount">0</span>
+                </div>
+            </div>
+            <div>
+                <button class="btn btn-primary" id="connectBtn" onclick="connect()">连接</button>
+                <button class="btn btn-danger" id="disconnectBtn" onclick="disconnect()" disabled>断开</button>
+            </div>
+        </div>
+
+        <!-- 主布局 -->
+        <div class="main-layout">
+            <!-- 发布消息面板 -->
+            <div class="panel">
+                <div class="panel-title">📤 发布消息</div>
+                <div class="form-group">
+                    <label>主题 <button class="refresh-btn" onclick="refreshTopics()">🔄 刷新</button></label>
+                    <select class="form-control" id="pubTopic">
+                        <option value="">-- 选择或输入主题 --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>消息内容</label>
+                    <textarea class="form-control" id="pubPayload" placeholder="输入消息内容..."></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>QoS</label>
+                        <select class="form-control" id="pubQos">
+                            <option value="0">QoS 0 - 最多一次</option>
+                            <option value="1">QoS 1 - 至少一次</option>
+                            <option value="2">QoS 2 - 恰好一次</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="pubRetain">
+                            <label for="pubRetain">保留消息</label>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-primary" id="publishBtn" onclick="publish()" disabled>📨 发布</button>
+            </div>
+
+            <!-- 订阅管理面板 -->
+            <div class="panel">
+                <div class="panel-title">📥 订阅管理</div>
+                <div class="form-group">
+                    <label>订阅主题 <button class="refresh-btn" onclick="refreshTopics()">🔄 刷新</button></label>
+                    <div class="topic-select-row">
+                        <select class="form-control" id="subTopic">
+                            <option value="">-- 选择或输入主题 --</option>
+                        </select>
+                        <button class="btn btn-primary" id="subscribeBtn" onclick="subscribe()" disabled>订阅</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>已订阅主题</label>
+                    <div class="subscription-list" id="subscriptionList">
+                        <div class="empty-state">暂无订阅</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 消息显示区域 -->
+            <div class="panel messages-container">
+                <div class="panel-title">📨 接收消息 <button class="refresh-btn" onclick="clearMessages()">🗑️ 清空</button>
+                </div>
+                <div id="messagesList">
+                    <div class="empty-state">暂无消息</div>
+                </div>
+            </div>
+
+            <!-- 日志区域 -->
+            <div class="panel">
+                <div class="panel-title">📝 系统日志 <button class="refresh-btn" onclick="clearLogs()">🗑️ 清空</button></div>
+                <div class="log-container" id="logContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket连接
+        let ws = null;
+        let reconnectTimer = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 10;
+        const RECONNECT_DELAY = 3000;
+
+        // 状态
+        let subscriptions = new Set();
+        let messageCount = { recv: 0, sent: 0 };
+        let serverTopics = []; // 服务端主题列表
+
+        // 获取WebSocket服务器地址 - 使用/ws路径
+        function getWsUrl() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            return `${protocol}//${host}/ws`;
+        }
+
+        // 连接WebSocket
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('已经连接', 'warning');
+                return;
+            }
+
+            updateStatus('connecting', '连接中...');
+
+            try {
+                const wsUrl = getWsUrl();
+                log(`正在连接: ${wsUrl}`, 'info');
+
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = function () {
+                    updateStatus('connected', '已连接');
+                    reconnectAttempts = 0;
+                    log('WebSocket连接成功', 'success');
+                    enableControls(true);
+
+                    // 连接成功后请求主题列表
+                    requestTopics();
+                };
+
+                ws.onmessage = function (event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleMessage(data);
+                    } catch (e) {
+                        log('收到无效消息: ' + event.data, 'error');
+                    }
+                };
+
+                ws.onclose = function (event) {
+                    updateStatus('disconnected', '已断开');
+                    log(`WebSocket连接关闭 (code: ${event.code})`, 'warning');
+                    enableControls(false);
+
+                    // 自动重连
+                    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                        reconnectAttempts++;
+                        log(`将在 ${RECONNECT_DELAY / 1000} 秒后尝试重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, 'warning');
+                        reconnectTimer = setTimeout(connect, RECONNECT_DELAY);
+                    } else {
+                        log('重连次数已达上限，请手动连接', 'error');
+                    }
+                };
+
+                ws.onerror = function (error) {
+                    log('WebSocket错误', 'error');
+                    console.error('WebSocket error:', error);
+                };
+            } catch (e) {
+                log('连接失败: ' + e.message, 'error');
+                updateStatus('disconnected', '连接失败');
+            }
+        }
+
+        // 断开连接
+        function disconnect() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+
+            reconnectAttempts = MAX_RECONNECT_ATTEMPTS; // 防止自动重连
+            updateStatus('disconnected', '已断开');
+            enableControls(false);
+            log('已断开连接', 'info');
+        }
+
+        // 处理收到的消息
+        function handleMessage(data) {
+            console.log('收到消息:', data);
+            console.log('消息类型:', data.type);
+
+            switch (data.type) {
+                case 'connected':
+                    log(`连接确认，客户端ID: ${data.client_id}`, 'success');
+                    break;
+
+                case 'message':
+                    console.log('处理message类型:', data);
+                    try {
+                        log(`收到消息: ${data.topic || '未知主题'}`, 'info');
+                        displayMessage(data);
+                        messageCount.recv++;
+                        updateStats();
+                    } catch (e) {
+                        console.error('处理message时出错:', e);
+                        log('处理消息错误: ' + e.message, 'error');
+                    }
+                    break;
+
+                case 'publish_ack':
+                    log(`消息发布成功: ${data.topic}`, 'success');
+                    messageCount.sent++;
+                    updateStats();
+                    break;
+
+                case 'subscribe_ack':
+                    subscriptions = new Set(data.subscriptions);
+                    updateSubscriptionList();
+                    log(`订阅成功: ${data.topic}`, 'success');
+                    updateStats();
+                    break;
+
+                case 'unsubscribe_ack':
+                    subscriptions = new Set(data.subscriptions);
+                    updateSubscriptionList();
+                    log(`取消订阅: ${data.topic}`, 'info');
+                    updateStats();
+                    break;
+
+                case 'topics_list':
+                    // 收到服务端主题列表
+                    serverTopics = data.topics || [];
+                    updateTopicSelects();
+                    log(`获取到 ${serverTopics.length} 个服务端主题`, 'success');
+                    break;
+
+                case 'error':
+                    log('错误: ' + data.message, 'error');
+                    break;
+
+                case 'pong':
+                    // 心跳响应，忽略
+                    break;
+
+                default:
+                    log('收到未知类型消息: ' + data.type, 'warning');
+            }
+        }
+
+        // 请求主题列表
+        function requestTopics() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+            ws.send(JSON.stringify({ type: 'get_topics' }));
+            log('请求服务端主题列表', 'info');
+        }
+
+        // 刷新主题列表
+        function refreshTopics() {
+            requestTopics();
+        }
+
+        // 更新主题下拉框
+        function updateTopicSelects() {
+            const pubSelect = document.getElementById('pubTopic');
+            const subSelect = document.getElementById('subTopic');
+
+            // 保存当前选择
+            const pubValue = pubSelect.value;
+            const subValue = subSelect.value;
+
+            // 清空并重新填充
+            const options = '<option value="">-- 选择或输入主题 --</option>';
+            const topicOptions = serverTopics.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+
+            pubSelect.innerHTML = options + topicOptions;
+            subSelect.innerHTML = options + topicOptions;
+
+            // 恢复选择
+            if (pubValue) pubSelect.value = pubValue;
+            if (subValue) subSelect.value = subValue;
+        }
+
+        // 发布消息
+        function publish() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('未连接，无法发布', 'error');
+                return;
+            }
+
+            const topicSelect = document.getElementById('pubTopic');
+            const topic = topicSelect.value.trim();
+            const payload = document.getElementById('pubPayload').value;
+            const qos = parseInt(document.getElementById('pubQos').value);
+            const retain = document.getElementById('pubRetain').checked;
+
+            if (!topic) {
+                log('请选择或输入主题', 'error');
+                return;
+            }
+
+            const message = {
+                type: 'publish',
+                topic: topic,
+                payload: payload,
+                qos: qos,
+                retain: retain
+            };
+
+            ws.send(JSON.stringify(message));
+            log(`发布消息: ${topic}`, 'info');
+
+            // 清空内容
+            document.getElementById('pubPayload').value = '';
+        }
+
+        // 订阅主题
+        function subscribe() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('未连接，无法订阅', 'error');
+                return;
+            }
+
+            const topicSelect = document.getElementById('subTopic');
+            const topic = topicSelect.value.trim();
+
+            if (!topic) {
+                log('请选择或输入主题', 'error');
+                return;
+            }
+
+            if (subscriptions.has(topic)) {
+                log(`已经订阅了: ${topic}`, 'warning');
+                return;
+            }
+
+            const message = {
+                type: 'subscribe',
+                topic: topic
+            };
+
+            ws.send(JSON.stringify(message));
+            topicSelect.value = '';
+        }
+
+        // 取消订阅
+        function unsubscribe(topic) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('未连接', 'error');
+                return;
+            }
+
+            const message = {
+                type: 'unsubscribe',
+                topic: topic
+            };
+
+            ws.send(JSON.stringify(message));
+        }
+
+        // 显示接收到的消息
+        function displayMessage(data) {
+            console.log('displayMessage called:', data);
+            try {
+                const container = document.getElementById('messagesList');
+                console.log('container:', container);
+
+                if (!container) {
+                    console.error('messagesList element not found!');
+                    log('错误: 找不到消息列表容器', 'error');
+                    return;
+                }
+
+                // 移除空状态
+                const emptyState = container.querySelector('.empty-state');
+                console.log('emptyState:', emptyState);
+                if (emptyState) {
+                    emptyState.remove();
+                }
+
+                // 处理时间戳
+                let timeStr = '未知时间';
+                if (data.timestamp) {
+                    try {
+                        timeStr = new Date(data.timestamp * 1000).toLocaleTimeString();
+                    } catch (e) {
+                        timeStr = '时间错误';
+                    }
+                }
+
+                const item = document.createElement('div');
+                item.className = 'message-item';
+                item.innerHTML = `
+                    <div class="message-header">
+                        <span class="message-topic">${escapeHtml(data.topic || '未知主题')}</span>
+                        <span class="message-meta">${timeStr} <span class="message-qos">QoS ${data.qos || 0}</span></span>
+                    </div>
+                    <div class="message-payload">${escapeHtml(data.payload || '')}</div>
+                `;
+
+                console.log('Inserting item:', item);
+                container.insertBefore(item, container.firstChild);
+                console.log('Item inserted, container children:', container.children.length);
+
+                // 限制消息数量
+                while (container.children.length > 100) {
+                    container.removeChild(container.lastChild);
+                }
+            } catch (e) {
+                console.error('显示消息失败:', e);
+                log('显示消息失败: ' + e.message, 'error');
+            }
+        }
+
+        // 清空消息
+        function clearMessages() {
+            document.getElementById('messagesList').innerHTML = '<div class="empty-state">暂无消息</div>';
+            messageCount.recv = 0;
+            updateStats();
+        }
+
+        // 清空日志
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+        }
+
+        // 更新订阅列表显示
+        function updateSubscriptionList() {
+            const container = document.getElementById('subscriptionList');
+
+            if (subscriptions.size === 0) {
+                container.innerHTML = '<div class="empty-state">暂无订阅</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            subscriptions.forEach(topic => {
+                const item = document.createElement('div');
+                item.className = 'subscription-item';
+                item.innerHTML = `
+                    <span>${escapeHtml(topic)}</span>
+                    <button class="btn btn-danger btn-small" onclick="unsubscribe('${escapeHtml(topic)}')">取消</button>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        // 更新状态显示
+        function updateStatus(status, text) {
+            const dot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+
+            dot.className = 'status-dot ' + status;
+            statusText.textContent = text;
+
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+
+            if (status === 'connected') {
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else if (status === 'disconnected') {
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            } else {
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        // 启用/禁用控件
+        function enableControls(enabled) {
+            document.getElementById('publishBtn').disabled = !enabled;
+            document.getElementById('subscribeBtn').disabled = !enabled;
+        }
+
+        // 更新统计
+        function updateStats() {
+            document.getElementById('recvCount').textContent = messageCount.recv;
+            document.getElementById('sentCount').textContent = messageCount.sent;
+            document.getElementById('subCount').textContent = subscriptions.size;
+        }
+
+        // 添加日志
+        function log(message, level = 'info') {
+            const container = document.getElementById('logContainer');
+            const time = new Date().toLocaleTimeString();
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${level}">${escapeHtml(message)}</span>`;
+
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+
+            // 限制日志数量
+            while (container.children.length > 200) {
+                container.removeChild(container.firstChild);
+            }
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 页面加载完成后自动连接
+        window.onload = function () {
+            log('页面加载完成，准备连接...', 'info');
+            connect();
+        };
+
+        // 页面关闭时断开连接
+        window.onbeforeunload = function () {
+            if (ws) {
+                ws.close();
+            }
+        };
+
+        // 定时刷新主题列表（每30秒）
+        setInterval(function () {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                requestTopics();
+            }
+        }, 30000);
+    </script>
+</body>
+
+</html>
