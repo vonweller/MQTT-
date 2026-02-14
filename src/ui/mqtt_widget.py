@@ -162,6 +162,48 @@ class MQTTWidget(QWidget):
         
         layout.addWidget(ws_group)
         
+        # 主题权限配置组
+        topic_auth_group = QGroupBox("主题权限控制")
+        topic_auth_layout = QVBoxLayout(topic_auth_group)
+        
+        self.strict_mode_check = QCheckBox("启用严格模式（只允许预定义主题）")
+        self.strict_mode_check.setToolTip("启用后，客户端只能发布/订阅预定义的主题")
+        topic_auth_layout.addWidget(self.strict_mode_check)
+        
+        # 允许的主题列表
+        topics_label = QLabel("允许的主题（每行一个，支持通配符 + 和 #）：")
+        topic_auth_layout.addWidget(topics_label)
+        
+        self.allowed_topics_input = QTextEdit()
+        self.allowed_topics_input.setPlaceholderText("sensor/#\ncontrol/+\ninference/result")
+        self.allowed_topics_input.setMaximumHeight(80)
+        topic_auth_layout.addWidget(self.allowed_topics_input)
+        
+        # 快速添加常用主题
+        quick_topics_layout = QHBoxLayout()
+        quick_topics_label = QLabel("快速添加:")
+        quick_topics_layout.addWidget(quick_topics_label)
+        
+        self.add_topic_sensor_btn = QPushButton("sensor/#")
+        self.add_topic_sensor_btn.setMaximumWidth(80)
+        self.add_topic_sensor_btn.clicked.connect(lambda: self._add_quick_topic("sensor/#"))
+        quick_topics_layout.addWidget(self.add_topic_sensor_btn)
+        
+        self.add_topic_control_btn = QPushButton("control/#")
+        self.add_topic_control_btn.setMaximumWidth(80)
+        self.add_topic_control_btn.clicked.connect(lambda: self._add_quick_topic("control/#"))
+        quick_topics_layout.addWidget(self.add_topic_control_btn)
+        
+        self.add_topic_inference_btn = QPushButton("inference/#")
+        self.add_topic_inference_btn.setMaximumWidth(80)
+        self.add_topic_inference_btn.clicked.connect(lambda: self._add_quick_topic("inference/#"))
+        quick_topics_layout.addWidget(self.add_topic_inference_btn)
+        
+        quick_topics_layout.addStretch()
+        topic_auth_layout.addLayout(quick_topics_layout)
+        
+        layout.addWidget(topic_auth_group)
+        
         # 状态显示
         status_group = QGroupBox("服务器状态")
         status_layout = QVBoxLayout(status_group)
@@ -424,6 +466,11 @@ class MQTTWidget(QWidget):
         self.server_username_input.setText(self.config.mqtt_server.username)
         self.server_password_input.setText(self.config.mqtt_server.password)
         
+        # 加载严格模式配置
+        self.strict_mode_check.setChecked(self.config.mqtt_server.strict_topic_mode)
+        if self.config.mqtt_server.allowed_topics:
+            self.allowed_topics_input.setPlainText('\n'.join(self.config.mqtt_server.allowed_topics))
+        
         # 客户端配置
         self.client_host_input.setText(self.config.mqtt_client.broker_host)
         self.client_port_input.setValue(self.config.mqtt_client.broker_port)
@@ -436,6 +483,15 @@ class MQTTWidget(QWidget):
         
         # 加载主题列表
         self._load_topic_table()
+    
+    def _add_quick_topic(self, topic: str):
+        """快速添加主题"""
+        current_text = self.allowed_topics_input.toPlainText()
+        topics = [t.strip() for t in current_text.split('\n') if t.strip()]
+        
+        if topic not in topics:
+            topics.append(topic)
+            self.allowed_topics_input.setPlainText('\n'.join(topics))
     
     def _load_topic_table(self):
         """加载主题列表"""
@@ -459,6 +515,14 @@ class MQTTWidget(QWidget):
         self.config.mqtt_server.enable_auth = self.server_auth_check.isChecked()
         self.config.mqtt_server.username = self.server_username_input.text()
         self.config.mqtt_server.password = self.server_password_input.text()
+        
+        # 保存严格模式配置
+        self.config.mqtt_server.strict_topic_mode = self.strict_mode_check.isChecked()
+        allowed_topics_text = self.allowed_topics_input.toPlainText().strip()
+        self.config.mqtt_server.allowed_topics = [
+            t.strip() for t in allowed_topics_text.split('\n') if t.strip()
+        ]
+        
         self.config_manager.save()
         
         self.server_start_requested.emit()

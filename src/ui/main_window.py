@@ -415,8 +415,14 @@ class MainWindow(QMainWindow):
                 logger.debug("[MainWindow] 创建MQTTServer实例...")
                 self.mqtt_server = MQTTServer(
                     host=self.config.mqtt_server.host,
-                    port=self.config.mqtt_server.port
+                    port=self.config.mqtt_server.port,
+                    strict_topic_mode=self.config.mqtt_server.strict_topic_mode
                 )
+                
+                # 设置允许的主题列表
+                if self.config.mqtt_server.strict_topic_mode and self.config.mqtt_server.allowed_topics:
+                    self.mqtt_server.set_allowed_topics(self.config.mqtt_server.allowed_topics)
+                    logger.info(f"[MainWindow] 严格模式已启用，允许的主题: {self.config.mqtt_server.allowed_topics}")
                 
                 # 添加回调 - 使用信号确保在主线程执行UI更新
                 from PyQt6.QtCore import QMetaObject, Qt, Q_ARG

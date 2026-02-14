@@ -21,6 +21,8 @@ class MQTTServerConfig:
     password: str = ""
     enable_auth: bool = False
     max_connections: int = 100
+    strict_topic_mode: bool = False  # 严格主题模式：只允许预定义的主题
+    allowed_topics: List[str] = field(default_factory=list)  # 允许的主题列表
 
 
 @dataclass
@@ -157,7 +159,9 @@ class ConfigManager:
                 username=ms.get('username', ''),
                 password=ms.get('password', ''),
                 enable_auth=ms.get('enable_auth', False),
-                max_connections=ms.get('max_connections', 100)
+                max_connections=ms.get('max_connections', 100),
+                strict_topic_mode=ms.get('strict_topic_mode', False),
+                allowed_topics=ms.get('allowed_topics', [])
             )
         
         # MQTT客户端配置
@@ -242,7 +246,9 @@ class ConfigManager:
                 'username': config.mqtt_server.username,
                 'password': config.mqtt_server.password,
                 'enable_auth': config.mqtt_server.enable_auth,
-                'max_connections': config.mqtt_server.max_connections
+                'max_connections': config.mqtt_server.max_connections,
+                'strict_topic_mode': config.mqtt_server.strict_topic_mode,
+                'allowed_topics': config.mqtt_server.allowed_topics
             },
             'mqtt_client': {
                 'broker_host': config.mqtt_client.broker_host,

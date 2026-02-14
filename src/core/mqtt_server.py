@@ -73,7 +73,7 @@ class MQTTClient:
 class MQTTServer:
     """MQTT服务端"""
     
-    def __init__(self, host: str = "0.0.0.0", port: int = 1883):
+    def __init__(self, host: str = "0.0.0.0", port: int = 1883, strict_topic_mode: bool = False):
         self.host = host
         self.port = port
         self.running = False
@@ -85,6 +85,10 @@ class MQTTServer:
         
         # 订阅管理: topic -> set of client_ids
         self.subscriptions: Dict[str, Set[str]] = defaultdict(set)
+        
+        # 主题权限控制
+        self.strict_topic_mode = strict_topic_mode  # 严格模式：只允许预定义的主题
+        self.allowed_topics: Set[str] = set()  # 允许的主题列表
         
         # 消息历史
         self.message_history: List[MQTTMessage] = []
@@ -104,10 +108,12 @@ class MQTTServer:
             'messages_sent': 0,
             'clients_connected': 0,
             'clients_disconnected': 0,
+            'messages_rejected': 0,  # 被拒绝的消息数
+            'subscriptions_rejected': 0,  # 被拒绝的订阅数
             'start_time': None
         }
         
-        logger.info(f"MQTT服务端初始化: {host}:{port}")
+        logger.info(f"MQTT服务端初始化: {host}:{port}, 严格模式: {strict_topic_mode}")
     
     async def start(self):
         """启动MQTT服务端"""
@@ -333,6 +339,12 @@ class MQTTServer:
             topic = packet_body[idx:idx+topic_len].decode('utf-8')
             idx += topic_len
             
+            # 检查主题权限
+            if not self._is_topic_allowed(topic):
+                logger.warning(f"[MQTT Server] 拒绝发布到未授权主题: {topic}")
+                self.stats['messages_rejected'] += 1
+                return
+            
             # 消息ID (QoS > 0)
             # 简化处理，假设QoS = 0
             
@@ -353,6 +365,8 @@ class MQTTServer:
                 self.message_history.pop(0)
             
             self.stats['messages_received'] += 1
+            
+            logger.info(f"[MQTT Server] 收到消息: {topic}, 大小: {len(payload)} bytes")
             
             # 触发回调
             for callback in self.on_message_callbacks:
@@ -388,6 +402,13 @@ class MQTTServer:
                 # QoS
                 qos = packet_body[idx]
                 idx += 1
+                
+                # 检查主题权限
+                if not self._is_topic_allowed(topic):
+                    logger.warning(f"[MQTT Server] 拒绝订阅未授权主题: {topic} (客户端: {client_id})")
+                    self.stats['subscriptions_rejected'] += 1
+                    return_codes.append(0x80)  # 订阅失败
+                    continue
                 
                 # 添加订阅
                 self.subscriptions[topic].add(client_id)
@@ -529,6 +550,52 @@ class MQTTServer:
                 idx += 1
         
         return idx == len(topic_parts)
+    
+    def _is_topic_allowed(self, topic: str) -> bool:
+        """
+        检查主题是否被允许
+        在严格模式下，只有预定义的主题才能使用
+        在非严格模式下，所有主题都被允许
+        """
+        if not self.strict_topic_mode:
+            return True
+        
+        # 检查是否匹配允许的主题列表（支持通配符匹配）
+        for allowed_topic in self.allowed_topics:
+            if self._topic_match(allowed_topic, topic):
+                return True
+            # 反向匹配：如果允许的主题是具体主题，检查是否匹配通配符订阅
+            if self._topic_match(topic, allowed_topic):
+                return True
+        
+        return False
+    
+    def add_allowed_topic(self, topic: str):
+        """添加允许的主题"""
+        self.allowed_topics.add(topic)
+        logger.info(f"[MQTT Server] 添加允许的主题: {topic}")
+    
+    def remove_allowed_topic(self, topic: str) -> bool:
+        """移除允许的主题"""
+        if topic in self.allowed_topics:
+            self.allowed_topics.remove(topic)
+            logger.info(f"[MQTT Server] 移除允许的主题: {topic}")
+            return True
+        return False
+    
+    def set_allowed_topics(self, topics: List[str]):
+        """设置允许的主题列表"""
+        self.allowed_topics = set(topics)
+        logger.info(f"[MQTT Server] 设置允许的主题列表: {topics}")
+    
+    def get_allowed_topics(self) -> List[str]:
+        """获取允许的主题列表"""
+        return list(self.allowed_topics)
+    
+    def set_strict_mode(self, enabled: bool):
+        """设置严格模式"""
+        self.strict_topic_mode = enabled
+        logger.info(f"[MQTT Server] 严格模式: {'启用' if enabled else '禁用'}")
     
     def add_message_callback(self, callback: Callable[[MQTTMessage], None]):
         """添加消息回调"""
