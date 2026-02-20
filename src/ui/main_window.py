@@ -28,6 +28,10 @@ from ..core.mqtt_server import MQTTServer
 from ..core.mqtt_client import MQTTClient
 from ..core.yolo_inference import YOLOInference
 from ..core.mqtt_ws_server import MQTTWebSocketServer
+from ..core.inference_result_publisher import (
+    InferenceResultPublisher,
+    PublisherConfig
+)
 
 
 class MainWindow(QMainWindow):
@@ -66,7 +70,79 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(self.config.app_name)
         self.resize(self.config.window_width, self.config.window_height)
         
+        # 初始化推理结果发布器
+        self._init_result_publisher()
+        
         logger.info("主窗口初始化完成")
+    
+    def _init_result_publisher(self):
+        """初始化推理结果发布器"""
+        logger.info("[结果发布] 初始化推理结果发布器")
+
+        # 创建配置
+        config = PublisherConfig(
+            topic="siot/推理结果",
+            qos=0,
+            enabled=True,
+            include_timestamp=True,
+            include_fps=True
+        )
+
+        # 创建发布器
+        self.result_publisher = InferenceResultPublisher(config)
+
+        # 设置UI回调，让消息显示在消息查看面板
+        self.result_publisher.set_ui_callback(self._add_inference_result_to_ui)
+
+        # 延迟设置，等待组件初始化完成
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(200, self._setup_publisher_integration)
+
+    def _add_inference_result_to_ui(self, topic: str, payload: str):
+        """
+        将推理结果消息添加到UI的消息查看面板
+
+        Args:
+            topic: 主题
+            payload: 消息内容
+        """
+        try:
+            # 使用与_main_window._add_published_message_to_ui相同的方法
+            self._add_published_message_to_ui(topic, payload, 0, False)
+        except Exception as e:
+            logger.warning(f"[结果发布] 添加消息到UI失败: {e}")
+
+    def _setup_publisher_integration(self):
+        """设置发布器的集成（延迟执行）"""
+        if self.mqtt_client and self.mqtt_client.is_connected():
+            self.result_publisher.set_mqtt_client(self.mqtt_client)
+            logger.info("[结果发布] MQTT客户端已设置")
+            self._add_inference_callbacks()
+
+    def _add_inference_callbacks(self):
+        """添加推理回调"""
+        if not self.result_publisher.is_available():
+            return
+
+        if self.yolo_inference:
+            yolo_callback = self.result_publisher.get_yolo_callback()
+            self.yolo_inference.add_inference_callback(yolo_callback)
+            logger.info("[结果发布] YOLO推理回调已添加")
+
+    def _setup_publisher_after_connect(self):
+        """MQTT客户端连接后设置发布器"""
+        if hasattr(self, 'result_publisher') and self.mqtt_client:
+            self.result_publisher.set_mqtt_client(self.mqtt_client)
+            logger.info("[结果发布] MQTT客户端连接成功，发布器已就绪")
+            self._add_inference_callbacks()
+
+    def _setup_publisher_for_new_inference(self):
+        """新推理器加载后设置发布器"""
+        if hasattr(self, 'result_publisher') and self.result_publisher.is_available():
+            if self.yolo_inference:
+                yolo_callback = self.result_publisher.get_yolo_callback()
+                self.yolo_inference.add_inference_callback(yolo_callback)
+                logger.info("[结果发布] 新YOLO推理器回调已添加")
     
     def _get_local_ipv4_addresses(self) -> List[str]:
         """获取本机所有可用的IPv4地址（排除回环地址）"""
@@ -411,6 +487,13 @@ class MainWindow(QMainWindow):
         logger.debug(f"[MainWindow] 开始启动MQTT服务器: {self.config.mqtt_server.host}:{self.config.mqtt_server.port}")
         
         try:
+            # 确保推理结果主题在允许列表中
+            inference_topic = "siot/推理结果"
+            if hasattr(self.config.mqtt_server, 'allowed_topics'):
+                if inference_topic not in self.config.mqtt_server.allowed_topics:
+                    self.config.mqtt_server.allowed_topics.append(inference_topic)
+                    logger.info(f"[结果发布] 已添加主题到允许列表: {inference_topic}")
+            
             if self.mqtt_server is None:
                 logger.debug("[MainWindow] 创建MQTTServer实例...")
                 self.mqtt_server = MQTTServer(
@@ -687,6 +770,8 @@ class MainWindow(QMainWindow):
             self.client_status_label.setText("MQTT客户端: 已连接")
             self.client_status_label.setStyleSheet("color: #4caf50;")
             self.mqtt_widget.on_client_connect_success()
+            # 设置推理结果发布器
+            self._setup_publisher_after_connect()
         else:
             self.client_status_label.setText("MQTT客户端: 连接失败")
             self.client_status_label.setStyleSheet("color: #f44336;")
@@ -809,6 +894,8 @@ class MainWindow(QMainWindow):
             # 将推理引擎传递给 inference_widget
             self.inference_widget.set_inference_engine(self.yolo_inference)
             self.inference_widget.on_model_loaded(True)
+            # 设置推理结果发布器的回调
+            self._setup_publisher_for_new_inference()
             logger.info(f"[MainWindow] 模型加载完成: {model_path}")
             
         except Exception as e:

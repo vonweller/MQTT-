@@ -27,6 +27,10 @@ except ImportError:
 
 from src.core.config_manager import ConfigManager
 from src.ui.main_window import MainWindow
+from src.core.inference_result_publisher import (
+    InferenceResultPublisher,
+    PublisherConfig
+)
 
 
 def setup_logging(log_dir: Path, log_level: str = "INFO"):

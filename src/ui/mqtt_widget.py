@@ -45,6 +45,7 @@ class MQTTWidget(QWidget):
         
         # 消息存储（用于筛选）
         self.all_messages = []  # 存储所有消息的完整数据
+        self.all_messages_full = []  # 存储所有消息的完整payload（用于详情显示）
         self.current_filter = ""  # 当前筛选条件
         
         self._init_ui()
@@ -449,7 +450,7 @@ class MQTTWidget(QWidget):
         # 消息详情
         self.message_detail = QTextEdit()
         self.message_detail.setPlaceholderText("选择消息查看详情...")
-        self.message_detail.setMaximumHeight(150)
+        self.message_detail.setMaximumHeight(300)
         self.message_detail.setReadOnly(True)
         layout.addWidget(self.message_detail)
         
@@ -802,6 +803,7 @@ class MQTTWidget(QWidget):
     def _on_clear_messages(self):
         """清空消息"""
         self.all_messages.clear()  # 清空存储的所有消息
+        self.all_messages_full.clear()  # 清空完整payload列表
         self.current_filter = ""  # 重置筛选条件
         self.message_table.setRowCount(0)
         self.message_detail.clear()
@@ -850,6 +852,8 @@ class MQTTWidget(QWidget):
         
         # 保存到完整消息列表
         self.all_messages.append(msg_data)
+        # 同时保存完整payload（用于详情显示）
+        self.all_messages_full.append(msg_data.get('payload', ''))
         
         # 检查是否符合当前筛选条件
         if self.current_filter and self.current_filter not in msg_data.get('topic', ''):
@@ -887,7 +891,19 @@ class MQTTWidget(QWidget):
             qos_item = self.message_table.item(row, 2)
             size_item = self.message_table.item(row, 3)
             msg_id_item = self.message_table.item(row, 4)
-            preview_item = self.message_table.item(row, 5)
+            
+            # 获取完整的payload内容
+            full_payload = ""
+            if row < len(self.all_messages_full):
+                full_payload = self.all_messages_full[row]
+            
+            # 尝试格式化JSON内容，让它更易读
+            try:
+                import json
+                parsed = json.loads(full_payload)
+                formatted_payload = json.dumps(parsed, ensure_ascii=False, indent=2)
+            except:
+                formatted_payload = full_payload
             
             # 构建详情文本
             details = []
@@ -898,7 +914,7 @@ class MQTTWidget(QWidget):
             details.append(f"消息ID: {msg_id_item.text() if msg_id_item else '-'}")
             details.append("-" * 40)
             details.append("内容:")
-            details.append(preview_item.text() if preview_item else '-')
+            details.append(formatted_payload)
             
             self.message_detail.setText("\n".join(details))
             
